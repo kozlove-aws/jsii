@@ -1,38 +1,12 @@
 import * as ts from 'typescript';
 
-export function rewriteTsdocBundle(ctx: ts.TransformationContext) {
-  return (source: ts.SourceFile | ts.Bundle): ts.SourceFile | ts.Bundle => {
-    if (ts.isBundle(source)) {
-      throw new Error('bundles not supported yet'); // FIXME
-    }
-
-    return ts.visitEachChild(source, visitor, ctx);
-
-    function visitor(node: ts.Node): ts.Node {
-      const handled = handleNode(node, source as ts.SourceFile);
-      return ts.visitEachChild(handled, visitor, ctx);
-    }
-  };
-}
-
 export function rewriteTsdoc(ctx: ts.TransformationContext) {
   return (source: ts.SourceFile): ts.SourceFile => {
-    return ts.visitEachChild(source, visitor, ctx);
-
-    function visitor(node: ts.Node): ts.Node {
-      const handled = handleNode(node, source);
-      return ts.visitEachChild(handled, visitor, ctx);
-    }
-  };
-}
-
-export function rewriteTsdocNode<T extends ts.Node>(
-  ctx: ts.TransformationContext,
-) {
-  return (node: T): T => {
-    const source = node.getSourceFile();
-    const handled = handleNode(node, source);
-    return ts.visitEachChild(handled, visitor, ctx);
+    const result = ts.visitEachChild(source, visitor, ctx);
+    console.log(
+      `source ${source.getFullText()} ${source.getFullStart()} ${source.getFullWidth()}`,
+    );
+    return result;
 
     function visitor(node: ts.Node): ts.Node {
       const handled = handleNode(node, source);
@@ -45,7 +19,7 @@ function handleNode<T extends ts.Node>(node: T, source: ts.SourceFile): T {
   if (ts.isClassDeclaration(node)) {
     const comment = tsdocExperimental(node, source);
     if (comment !== undefined) {
-      return updateExperimentalDocString(node, comment);
+      return updateExperimentalDocString(node, source, comment);
     }
   }
   return node;
@@ -89,31 +63,30 @@ function tsdocExperimental(
 
 function updateExperimentalDocString<T extends ts.Node>(
   node: T,
+  source: ts.SourceFile,
   comment: CommentRange,
 ): T {
-  // const nodeText = node.getFullText(node.getSourceFile());
-  // const commentranges = ts.getLeadingCommentRanges(nodeText, 0);
-  const commentranges = undefined;
-
-  const nocomments = commentranges
-    ? ts.setTextRange(node, {
-        pos: node.getStart(),
-        end: node.getEnd(),
-      })
-    : node;
-
-  const newComment = `* EXPERIMENTAL API ${comment.commentText.slice(
+  const newComment = `/** EXPERIMENTAL API ${comment.commentText.slice(
     3,
     comment.commentText.length - 3,
-  )}`;
+  )}*/`;
 
-  // Now adding a new synthetic comment as a replacement
-  return ts.addSyntheticLeadingComment(
-    nocomments,
-    comment.kind,
-    newComment,
-    comment.hasTrailingNewLine,
-  );
+  const nodeText = node.getFullText(source);
+  const commentranges = ts.getLeadingCommentRanges(nodeText, 0);
+
+  if (commentranges) {
+    const range = commentranges[0]; // FIXME - for now just the first
+    const srcText = source.getFullText();
+    // console.log(`before replace [${source.text}]`);
+    source.text =
+      srcText.slice(0, node.getFullStart() + range.pos) +
+      newComment +
+      srcText.slice(node.getFullStart() + range.end);
+    source.end += 17;
+    // console.log(`replaced [${source.text}]`);
+  }
+
+  return node;
 }
 
 interface CommentRange extends ts.CommentRange {

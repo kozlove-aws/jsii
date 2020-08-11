@@ -218,7 +218,6 @@ export class Compiler implements Emitter {
   ): Promise<EmitResult> {
     const emit = program.emit(undefined, undefined, undefined, undefined, {
       before: [transforms.rewriteTsdoc],
-      afterDeclarations: [transforms.rewriteTsdocBundle],
     });
     let hasErrors = emitHasErrors(emit, this.options.failOnWarnings);
     const diagnostics = [...emit.diagnostics];
